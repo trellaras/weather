@@ -19,18 +19,21 @@
             align-items: center; 
             padding: 20px;
             margin: 0;
+            min-height: 100vh;
         }
         .container { 
             max-width: 850px; 
             width: 100%; 
             text-align: center; 
+            flex: 1;
         }
         h1 { color: #ecf0f1; margin-bottom: 25px; }
         .input-group {
-            margin-bottom: 20px;
+            margin-bottom: 10px;
             display: flex;
             justify-content: center;
             gap: 10px;
+            flex-wrap: wrap;
         }
         input { 
             padding: 12px; 
@@ -38,6 +41,7 @@
             border-radius: 5px; 
             border: 1px solid #34495e; 
             width: 60%; 
+            min-width: 250px;
             background: #fff;
             color: #333;
         }
@@ -52,11 +56,16 @@
             transition: background 0.3s;
         }
         button:hover { background-color: #2980b9; }
+        .geo-btn {
+            background-color: #2ecc71;
+            margin-bottom: 20px;
+        }
+        .geo-btn:hover { background-color: #27ae60; }
         #output { 
             background-color: #0e2237; 
             padding: 25px; 
             border-radius: 10px; 
-            margin-top: 20px; 
+            margin-top: 10px; 
             text-align: left; 
             white-space: pre-wrap; 
             font-family: 'Courier New', Courier, monospace; 
@@ -64,7 +73,13 @@
             border: 2px solid #34495e;
             overflow-x: auto;
         }
-        .loading-text { color: #f1c40f; font-weight: bold; }
+        footer {
+            margin-top: 30px;
+            padding-bottom: 20px;
+            font-size: 14px;
+            color: #95a5a6;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -76,10 +91,12 @@
         <input type="text" id="location-input" placeholder="Εισάγετε Τοποθεσία (π.χ. Αθήνα)">
         <button id="search-btn" py-click="get_weather">Αναζήτηση</button>
     </div>
+    
+    <button class="geo-btn" onclick="getLocation()">📍 Χρήση Τοποθεσίας μου</button>
 
     <div id="output">Καλώς ήρθατε στη Μετεωρολογική Πρόγνωση!
         
-Εισάγετε όνομα πόλης και κάντε κλικ στο Αναζήτηση για να λάβετε τον τρέχοντα καιρό και πρόγνωση 3 ημερών.</div>
+Εισάγετε όνομα πόλης ή χρησιμοποιήστε την αυτόματη τοποθεσία για να λάβετε πρόγνωση 7 ημερών.</div>
 </div>
 
 <footer>Coded by JohnKaL</footer>
@@ -88,21 +105,45 @@
     packages = ["requests", "pyodide-http", "geopy", "ssl"]
 </py-config>
 
+<script>
+    // JavaScript helper to bridge browser Geolocation to PyScript
+    function getLocation() {
+        const output = document.getElementById("output");
+        output.innerText = "🛰️ Λήψη συντεταγμένων από το GPS...";
+        
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    // Send coordinates to PyScript by calling a hidden function or logic
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    // Trigger PyScript function
+                    pyscript.get_runtime().runPython(`fetch_weather_by_coords(${lat}, ${lon})`);
+                },
+                (error) => {
+                    output.innerText = "❌ Σφάλμα τοποθεσίας: Βεβαιωθείτε ότι έχετε ενεργοποιήσει το GPS.";
+                }
+            );
+        } else {
+            output.innerText = "❌ Το πρόγραμμα περιήγησης δεν υποστηρίζει Geolocation.";
+        }
+    }
+</script>
+
 <script type="py">
 import pyodide_http
-pyodide_http.patch_all() # Fixes requests for browser
+pyodide_http.patch_all()
 
 import requests
 from geopy.geocoders import Nominatim
 from datetime import datetime
-from pyscript import document
+from pyscript import document, window
 
 def get_weather_description(code):
-    """Convert WMO weather code to description (Original Logic)"""
     codes = {
-        0: "Καθαρός ουρανός ☀️", 1: "Κυρίως καθαρά 🌤️", 2: "Μερικώς νεφελώδης ⛅", 3: "Συννεφιασμένο ☁️",
-        45: "Ομιχλώδης 🌫️", 48: "Ομιχλώδης με παγετό 🌫️", 51: "Ελαφρό ψίχα 🌦️", 53: "Μέτριο ψίχα 🌦️",
-        55: "Βαρύ ψίχα 🌧️", 61: "Ελαφρή βροχή 🌧️", 63: "Μέτρια βροχή 🌧️", 65: "Βαριά βροχή ⛈️",
+        0: "Καθαρός ουρανός ☀️", 1: "Κυρίως καθαρός 🌤️", 2: "Μερικώς νεφελώδης ⛅", 3: "Συννεφιασμένος ☁️",
+        45: "Ομιχλώδης 🌫️", 48: "Ομιχλώδης με παγετό 🌫️", 51: "Ελαφριά ψιχάλα 🌦️", 53: "Μέτρια ψιχάλα 🌦️",
+        55: "Βαριά ψιχάλα 🌧️", 61: "Ελαφριά βροχή 🌧️", 63: "Μέτρια βροχή 🌧️", 65: "Βαριά βροχή ⛈️",
         71: "Ελαφρό χιόνι ❄️", 73: "Μέτριο χιόνι ❄️", 75: "Βαρύ χιόνι ❄️", 77: "Κόκκοι χιονιού ❄️",
         80: "Ελαφρές βροχοπτώσεις 🌧️", 81: "Μέτριες βροχοπτώσεις 🌧️", 82: "Βίαιες βροχοπτώσεις ⛈️",
         85: "Ελαφρές χιονοπτώσεις ❄️", 86: "Βαριές χιονοπτώσεις ❄️", 95: "Καταιγίδα ⛈️",
@@ -111,42 +152,22 @@ def get_weather_description(code):
     return codes.get(code, f"Κωδικός καιρού {code}")
 
 def get_wind_direction(degrees):
-    """Convert degrees to compass direction (Original Logic)"""
     if degrees is None or degrees == "N/A": return "N/A"
     directions = ["Β", "ΒΒΑ", "ΒΑ", "ΑΒΑ", "Α", "ΑΝΑ", "ΝΑ", "ΝΝΑ", "Ν", "ΝΝΔ", "ΝΔ", "ΔΝΔ", "Δ", "ΔΒΔ", "ΒΔ", "ΒΒΔ"]
     index = round(float(degrees) / 22.5) % 16
     return directions[index]
 
 def get_greek_date(date_obj):
-    """Convert date to Greek format (Original Logic)"""
     days = {"Monday": "Δευτέρα", "Tuesday": "Τρίτη", "Wednesday": "Τετάρτη", "Thursday": "Πέμπτη", "Friday": "Παρασκευή", "Saturday": "Σάββατο", "Sunday": "Κυριακή"}
     months = {"January": "Ιανουαρίου", "February": "Φεβρουαρίου", "March": "Μαρτίου", "April": "Απριλίου", "May": "Μαΐου", "June": "Ιουνίου", "July": "Ιουλίου", "August": "Αυγούστου", "September": "Σεπτεμβρίου", "October": "Οκτωβρίου", "November": "Νοεμβρίου", "December": "Δεκεμβρίου"}
-    
     day_name = days.get(date_obj.strftime("%A"), date_obj.strftime("%A"))
     month_name = months.get(date_obj.strftime("%B"), date_obj.strftime("%B"))
     return f"{day_name}, {date_obj.strftime('%d')} {month_name} {date_obj.strftime('%Y')}"
 
-async def get_weather(event):
+async def display_weather(lat, lon, address_name):
     output_div = document.querySelector("#output")
-    location = document.querySelector("#location-input").value.strip()
-    
-    if not location:
-        output_div.innerText = "❌ Παρακαλώ εισάγετε μια τοποθεσία!"
-        return
-
-    output_div.innerText = "🔍 Αναζήτηση τοποθεσίας...\n"
-    
     try:
-        # Get coordinates via Geopy
-        geolocator = Nominatim(user_agent="weather_forecast_web_app")
-        geo = geolocator.geocode(location, timeout=10)
-        
-        if not geo:
-            output_div.innerText = f"❌ Η τοποθεσία '{location}' δεν βρέθηκε!"
-            return
-
-        # Fetch weather data
-        url = (f"https://api.open-meteo.com/v1/forecast?latitude={geo.latitude}&longitude={geo.longitude}"
+        url = (f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
                f"&current=temperature_2m,relative_humidity_2m,weather_code,precipitation,wind_speed_10m,wind_direction_10m"
                f"&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum,wind_speed_10m_max&temperature_unit=celsius")
         
@@ -155,11 +176,10 @@ async def get_weather(event):
         current = data["current"]
         daily = data["daily"]
 
-        # Formatting Output
         res = "=" * 70 + "\n"
-        res += f"📍 {geo.address}\n"
+        res += f"📍 {address_name}\n"
         res += "=" * 70 + "\n\n"
-        res += "🌡️ Τρέχων καιρός\n"
+        res += "🌡️ ΤΡΕΧΩΝ ΚΑΙΡΟΣ\n"
         res += "-" * 70 + "\n\n"
         res += f"Θερμοκρασία: {current['temperature_2m']}°C\n"
         res += f"Συνθήκες: {get_weather_description(current['weather_code'])}\n"
@@ -169,10 +189,10 @@ async def get_weather(event):
         res += f"Κατεύθυνση ανέμου: {get_wind_direction(current['wind_direction_10m'])}\n\n"
         
         res += "=" * 70 + "\n"
-        res += "📅 Πρόγνωση 3 ημερών\n"
+        res += "📅 ΠΡΟΓΝΩΣΗ 7 ΗΜΕΡΩΝ\n"
         res += "-" * 70 + "\n\n"
         
-        for i in range(3):
+        for i in range(7):
             date_obj = datetime.strptime(daily['time'][i], "%Y-%m-%d")
             res += f"📌 {get_greek_date(date_obj)}\n"
             res += f"   Συνθήκες: {get_weather_description(daily['weather_code'][i])}\n"
@@ -180,9 +200,38 @@ async def get_weather(event):
             res += f"   Βροχόπτωση: {daily['precipitation_sum'][i]} mm | Άνεμος: {daily['wind_speed_10m_max'][i]} km/h\n\n"
 
         output_div.innerText = res
-
     except Exception as e:
         output_div.innerText = f"❌ Σφάλμα: {str(e)}"
+
+async def get_weather(event):
+    location = document.querySelector("#location-input").value.strip()
+    if not location:
+        document.querySelector("#output").innerText = "❌ Παρακαλώ εισάγετε μια τοποθεσία!"
+        return
+    
+    document.querySelector("#output").innerText = "🔍 Αναζήτηση τοποθεσίας...\n"
+    try:
+        geolocator = Nominatim(user_agent="weather_forecast_web_app")
+        geo = geolocator.geocode(location, timeout=10)
+        if not geo:
+            document.querySelector("#output").innerText = f"❌ Η τοποθεσία '{location}' δεν βρέθηκε!"
+            return
+        await display_weather(geo.latitude, geo.longitude, geo.address)
+    except Exception as e:
+        document.querySelector("#output").innerText = f"❌ Σφάλμα: {str(e)}"
+
+# Global function for the JS button to call
+async def fetch_weather_by_coords(lat, lon):
+    try:
+        geolocator = Nominatim(user_agent="weather_forecast_web_app")
+        location = geolocator.reverse(f"{lat}, {lon}", timeout=10)
+        address = location.address if location else f"Συντεταγμένες: {lat}, {lon}"
+        await display_weather(lat, lon, address)
+    except:
+        await display_weather(lat, lon, f"Συντεταγμένες: {lat}, {lon}")
+
+# Make function accessible to JavaScript
+window.fetch_weather_by_coords = fetch_weather_by_coords
 </script>
 
 </body>
